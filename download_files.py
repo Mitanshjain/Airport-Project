@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+import requests
+import zipfile
 
 BTS_WEBSITE = "https://transtats.bts.gov/PREZIP/"
 
@@ -45,45 +47,56 @@ def download_one_month(year, month, save_folder):
     print(f"  Downloading {year}-{month} \n  from  {download_url}")
 
   
-    # try:
-    #     # stream=True means we download the file in small chunks rather than
-    #     # loading the whole thing into RAM first. This is essential for large files.
-    #     response = requests.get(download_url, stream=True, timeout=120)
-    #     response.raise_for_status()   # this crashes loudly if the URL returned an error
+    try:
+        # stream=True means we download the file in small chunks rather than
+        # loading the whole thing into RAM first. This is essential for large files.
+        response = requests.get(download_url, stream=True, timeout=120)
+        response.raise_for_status()   # this crashes loudly if the URL returned an error
 
-    #     # Write the ZIP file to disk, chunk by chunk (each chunk = 1 MB)
-    #     with open(zip_save_path, "wb") as zip_file:
-    #         for chunk in response.iter_content(chunk_size=1024 * 1024):
-    #             zip_file.write(chunk)
+        # Write the ZIP file to disk, chunk by chunk (each chunk = 1 MB)
+        with open(zip_save_path, "wb") as zip_file:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                zip_file.write(chunk)
 
-    # #     # Open the ZIP and pull out the CSV that's inside it
-    # #     with zipfile.ZipFile(zip_save_path, "r") as zip_ref:
-    # #         # Find the CSV file inside (there's always exactly one)
-    # #         csv_inside = [name for name in zip_ref.namelist() if name.endswith(".csv")][0]
-    # #         zip_ref.extract(csv_inside, save_folder)
-    # #         # Rename it to something clean and consistent
-    # #         os.rename(os.path.join(save_folder, csv_inside), csv_save_path)
+        # Open the ZIP and pull out the CSV that's inside it
+        with zipfile.ZipFile(zip_save_path, "r") as zip_ref:
+            # Find the CSV file inside (there's always exactly one)
+            csv_inside = [name for name in zip_ref.namelist() if name.endswith(".csv")][0]
+            zip_ref.extract(csv_inside, save_folder)
 
-    # #     # Remove the ZIP now that we have the CSV — free up disk space
-    # #     os.remove(zip_save_path)
+            # Rename it to something clean and consistent
+            extracted_path = os.path.join(save_folder, csv_inside)
+            if os.path.exists(csv_save_path):
+                os.remove(csv_save_path)   # avoid rename error
+            os.rename(extracted_path, csv_save_path)
 
-    # #     # Print how big the file is so you can sanity check it
-    # #     file_size_mb = os.path.getsize(csv_save_path) / (1024 ** 2)
-    # #     print(f"  Done: {csv_save_path}  ({file_size_mb:.1f} MB)")
+        # Remove the ZIP now that we have the CSV — free up disk space
+        if os.path.exists(zip_save_path):
+            os.remove(zip_save_path)
 
-    # #     # QUICK DATA QUALITY CHECK:
-    # #     # Count how many lines are in the file (approximate row count).
-    # #     # A healthy file should have 400,000+ rows.
-    # #     with open(csv_save_path, "r", encoding="utf-8", errors="replace") as f:
-    # #         row_count = sum(1 for _ in f) - 1   # subtract 1 for the header row
-    # #     print(f"  Row count: {row_count:,}  {'✅ looks good' if row_count > 400000 else '⚠️  seems low — double check!'}")
+        # Print how big the file is so you can sanity check it
+        file_size_mb = os.path.getsize(csv_save_path) / (1024 ** 2)
+        print(f"  Done: {csv_save_path}  ({file_size_mb:.1f} MB)")
 
-    # #     return csv_save_path
+        # QUICK DATA QUALITY CHECK:
+        # Count how many lines are in the file (approximate row count).
+        # A healthy file should have 400,000+ rows.
+        with open(csv_save_path, "r", encoding="utf-8", errors="replace") as f:
+            row_count = sum(1 for _ in f) - 1   # subtract 1 for the header row
+        print(f"  Row count: {row_count:,}  {'✅ looks good' if row_count > 400000 else '⚠️  seems low — double check!'}")
 
-    # except Exception as error:
-    #     print(f"  ERROR on {year}-{month:02d}: {error}")
-    #     print(f"  Tip: Check your internet connection or try again in a few minutes.")
-    #     return None
+        return csv_save_path
+
+    except Exception as error:
+        print(f"  ERROR on {year}-{month:02d}: {error}")
+        print(f"  Tip: Check your internet connection or try again in a few minutes.")
+
+        # Make sure ZIP is deleted even if error happens
+        if os.path.exists(zip_save_path):
+            os.remove(zip_save_path)
+
+        return None
+
 
 for year in YEARS_TO_DOWNLOAD:
     print(f"\n  Year {year} ")
